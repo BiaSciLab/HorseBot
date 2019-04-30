@@ -1,10 +1,7 @@
 """
-'analog_in.py'
-==================================
-Example of sending analog sensor
-values to an Adafruit IO feed.
+'HorseBot'
 
-Author(s): Brent Rubell
+Author(s): BiaSciLab, based on Analog In from Adafruit
 
 Dependencies:
     - Adafruit_Blinka
@@ -24,7 +21,7 @@ import busio
 from Adafruit_IO import Client, Feed, RequestError
 
 # import Adafruit CircuitPython MCP3xxx library
-from adafruit_mcp3xxx.mcp3008 import MCP3008
+import adafruit_mcp3xxx.mcp3008 as MCP
 from adafruit_mcp3xxx.analog_in import AnalogIn
 
 # Set to your Adafruit IO key.
@@ -39,9 +36,9 @@ ADAFRUIT_IO_USERNAME = 'BiaSciLab'
 aio = Client(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
 
 try: # if we have a 'analog' feed
-    analog = aio.feeds('analog')
+    analog = aio.feeds('waterlevel')
 except RequestError: # create a analog feed
-    feed = Feed(name='analog')
+    feed = Feed(name='waterlevel')
     analog = aio.create_feed(feed)
 
 # Create an instance of the `busio.spi` class
@@ -51,16 +48,30 @@ spi = busio.SPI(board.SCLK, board.MOSI, board.MISO)
 cs = digitalio.DigitalInOut(board.D22)
 
 # create a mcp3008 object
-mcp = MCP3008(spi, cs)
+mcp = MCP.MCP3008(spi, cs)
 
 # create an an adc (single-ended) on pin 0
-chan = AnalogIn(mcp, MCP3008.pin_0)
+chan = AnalogIn(mcp, MCP.P0)
+
+def remap_range(value, low_min, low_max, high_min, high_max):
+    # this remaps a value from original (low) range to new (high) range
+    # Figure out how 'wide' each range is
+    low_span = low_max - low_min
+    high_span = high_max - high_min
+
+    # Convert the low range into a 0-1 range (int)
+    valueScaled = int(value - low_min) / int(low_span)
+
+    # Convert the 0-1 range into a value in the high range.
+    return int(high_min + (valueScaled * high_span))
 
 while True:
     sensor_data = chan.value
+
+    water_volume = remap_range(sensor_data, 0, 65535, 0, 100)
 
     print('Analog Data -> ', sensor_data)
     aio.send(analog.key, sensor_data)
 
     # avoid timeout from adafruit io
-    time.sleep(0.5)
+    time.sleep(10)
